@@ -5,7 +5,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 
 # Wczytanie danych
-file_path = "./dane.csv"
+file_path ="data.csv"
 data = pd.read_csv(file_path)
 
 # Kolumny kategoryczne i numeryczne

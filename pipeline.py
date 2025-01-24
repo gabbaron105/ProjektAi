@@ -3,7 +3,9 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 X = pd.read_csv('X_train.csv')
 y = pd.read_csv('y_train.csv')
@@ -12,9 +14,25 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.1, random_state=42, stratify=y
 )
 
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
+print("Columns in X_train:", X_train.columns)
+
+# Update the categorical_features list to match the actual column names in the dataframe
+categorical_features = []  # Update this list based on the actual categorical columns in your dataset
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('cat', OneHotEncoder(), categorical_features)
+    ],
+    remainder='passthrough'
+)
+
+pipeline = Pipeline(steps=[
+    ('preprocessor', preprocessor),
+    ('scaler', StandardScaler())
+])
+
+X_train_scaled = pipeline.fit_transform(X_train)
+X_test_scaled = pipeline.transform(X_test)
 
 pca = PCA(n_components=30)  
 X_train_pca = pca.fit_transform(X_train_scaled)

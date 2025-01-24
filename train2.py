@@ -14,11 +14,9 @@ X_test = pd.read_csv('X_test.csv')
 y_train = pd.read_csv('y_train.csv')
 y_test = pd.read_csv('y_test.csv')
 
-# Rozdzielenie kolumn na numeryczne i kategoryczne
 numeric_features = X_train.select_dtypes(include=['int64', 'float64']).columns
 categorical_features = X_train.select_dtypes(include=['object']).columns
 
-# Tworzenie transformerów dla różnych typów danych
 numeric_transformer = Pipeline(steps=[
     ('scaler', StandardScaler())
 ])
@@ -27,20 +25,17 @@ categorical_transformer = Pipeline(steps=[
     ('onehot', OneHotEncoder(drop='first', sparse_output=False))
 ])
 
-# Łączenie transformerów w jeden preprocessor
 preprocessor = ColumnTransformer(
     transformers=[
         ('num', numeric_transformer, numeric_features),
         ('cat', categorical_transformer, categorical_features)
     ])
 
-# Tworzenie pełnego potoku
 pipeline = Pipeline([
     ('preprocessor', preprocessor),
     ('classifier', DecisionTreeClassifier(random_state=42))
 ])
 
-# Parametry do przeszukania - zmniejszone zakresy
 param_grid = {
     'classifier__max_depth': [3, 5, 7],
     'classifier__min_samples_split': [5, 10],
@@ -49,7 +44,7 @@ param_grid = {
     'classifier__ccp_alpha': [0.01, 0.05]
 }
 
-print("Starting Grid Search with Cross Validation...")
+print("Starting Grid Search Cross Validation...")
 grid_search = GridSearchCV(
     pipeline,
     param_grid,
@@ -59,18 +54,15 @@ grid_search = GridSearchCV(
     verbose=1
 )
 
-# Enkodowanie zmiennej celu
 le_y = LabelEncoder()
 y_train = le_y.fit_transform(y_train.values.ravel())
 y_test = le_y.transform(y_test.values.ravel())
 
-# Trenowanie modelu
 grid_search.fit(X_train, y_train)
 
 print("\nBest Parameters:")
 print(grid_search.best_params_)
 
-# Ocena modelu
 print("\nCross Validation Scores:")
 cv_scores = cross_val_score(grid_search.best_estimator_, X_train, y_train, cv=5)
 print(f"CV Accuracy: {cv_scores.mean():.3f} (+/- {cv_scores.std() * 2:.3f})")
@@ -87,7 +79,6 @@ print(classification_report(y_test, y_pred, target_names=target_names))
 print("\nConfusion Matrix:")
 print(confusion_matrix(y_test, y_pred))
 
-# Zapis wyników
 print("\nSaving results...")
 results = pd.DataFrame({
     'Actual': le_y.inverse_transform(y_test),
@@ -95,9 +86,7 @@ results = pd.DataFrame({
 })
 results.to_csv('results.csv', index=False)
 
-# Zapisywanie ważności cech (jeśli są dostępne)
 if hasattr(grid_search.best_estimator_.named_steps['classifier'], 'feature_importances_'):
-    # Pobieranie nazw cech po transformacji
     feature_names = (numeric_features.tolist() + 
                     [f"{feature}_encoded" for feature in categorical_features])
     

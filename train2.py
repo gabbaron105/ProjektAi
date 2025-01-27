@@ -1,103 +1,89 @@
 import pandas as pd
+from sklearn.svm import SVR
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score, classification_report, confusion_matrix, roc_curve, auc
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 import numpy as np
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import GridSearchCV, cross_val_score
-from sklearn.preprocessing import OneHotEncoder
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-print("Loading training and test data...")
-X_train = pd.read_csv('X_train.csv')
-X_test = pd.read_csv('X_test.csv')
-y_train = pd.read_csv('y_train.csv')
-y_test = pd.read_csv('y_test.csv')
+X_train = pd.read_csv('X_train_processed.csv')
+X_test = pd.read_csv('X_test_processed.csv')
+y_train = pd.read_csv('y_train.csv').values.ravel()
+y_test = pd.read_csv('y_test.csv').values.ravel()
 
-numeric_features = X_train.select_dtypes(include=['int64', 'float64']).columns
-categorical_features = X_train.select_dtypes(include=['object']).columns
-
-numeric_transformer = Pipeline(steps=[
-    ('scaler', StandardScaler())
-])
-
-categorical_transformer = Pipeline(steps=[
-    ('onehot', OneHotEncoder(drop='first', sparse_output=False))
-])
-
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', numeric_transformer, numeric_features),
-        ('cat', categorical_transformer, categorical_features)
-    ])
-
-pipeline = Pipeline([
-    ('preprocessor', preprocessor),
-    ('classifier', DecisionTreeClassifier(random_state=42))
-])
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
 param_grid = {
-    'classifier__max_depth': [3, 5, 7],
-    'classifier__min_samples_split': [5, 10],
-    'classifier__min_samples_leaf': [2, 4],
-    'classifier__max_features': ['sqrt', 'log2'],
-    'classifier__ccp_alpha': [0.01, 0.05]
+    'C': [0.1, 1, 10],
+    'gamma': ['scale', 0.1, 1],
+    'epsilon': [0.1, 0.2]
 }
-
-print("Starting Grid Search Cross Validation...")
-grid_search = GridSearchCV(
-    pipeline,
-    param_grid,
-    cv=5,
-    scoring='accuracy',
-    n_jobs=-1,
-    verbose=1
-)
-
-le_y = LabelEncoder()
-y_train = le_y.fit_transform(y_train.values.ravel())
-y_test = le_y.transform(y_test.values.ravel())
-
+grid_search = GridSearchCV(SVR(kernel='rbf'), param_grid, cv=3, scoring='r2', n_jobs=-1)
 grid_search.fit(X_train, y_train)
 
-print("\nBest Parameters:")
-print(grid_search.best_params_)
+model = grid_search.best_estimator_
+print("Best parameters:", grid_search.best_params_)
 
-print("\nCross Validation Scores:")
-cv_scores = cross_val_score(grid_search.best_estimator_, X_train, y_train, cv=5)
-print(f"CV Accuracy: {cv_scores.mean():.3f} (+/- {cv_scores.std() * 2:.3f})")
+model.fit(X_train, y_train)
 
-y_pred = grid_search.predict(X_test)
+y_pred = model.predict(X_test)
 
-print("\nTest Set Accuracy:")
-print(f"{accuracy_score(y_test, y_pred):.3f}")
+mse = mean_squared_error(y_test, y_pred)
+mae = mean_absolute_error(y_test, y_pred)
+r2 = r2_score(y_test, y_pred)
 
-target_names = le_y.inverse_transform(np.unique(y_train)).astype(str)
+print("\nRegression evaluation:")
+print(f"Mean Squared Error (MSE): {mse:.3f}")
+print(f"Mean Absolute Error (MAE): {mae:.3f}")
+print(f"R-squared (R2): {r2:.3f}")
+
+y_pred_class = (y_pred >= 0.5).astype(int)  
+
+accuracy = accuracy_score(y_test, y_pred_class)
+print(f"\nClassification Accuracy: {accuracy:.3f}")
+
 print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=target_names))
+print(classification_report(y_test, y_pred_class))
 
 print("\nConfusion Matrix:")
-print(confusion_matrix(y_test, y_pred))
+print(confusion_matrix(y_test, y_pred_class))
 
-print("\nSaving results...")
-results = pd.DataFrame({
-    'Actual': le_y.inverse_transform(y_test),
-    'Predicted': le_y.inverse_transform(y_pred)
-})
-results.to_csv('results.csv', index=False)
+cm = confusion_matrix(y_test, y_pred_class)
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=['Class 0', 'Class 1'], yticklabels=['Class 0', 'Class 1'])
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+plt.show()
 
-if hasattr(grid_search.best_estimator_.named_steps['classifier'], 'feature_importances_'):
-    feature_names = (numeric_features.tolist() + 
-                    [f"{feature}_encoded" for feature in categorical_features])
-    
-    feature_importances = pd.DataFrame(
-        grid_search.best_estimator_.named_steps['classifier'].feature_importances_,
-        index=feature_names,
-        columns=['Importance']
-    ).sort_values(by='Importance', ascending=False)
-    
-    print("\nFeature Importances:")
-    print(feature_importances)
-    feature_importances.to_csv('feature_importances.csv')
+y_pred_proba = model.predict(X_test)
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+roc_auc = auc(fpr, tpr)
 
-print("Process completed.")
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='blue', lw=2, label=f'ROC curve (area = {roc_auc:.2f})')
+plt.plot([0, 1], [0, 1], color='gray', lw=1, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic (ROC)')
+plt.legend(loc="lower right")
+plt.show()
+
+plt.figure(figsize=(8, 6))
+sns.histplot(y_pred_proba[y_test == 0], color='blue', label='Class 0', kde=True, stat="density", bins=25)
+sns.histplot(y_pred_proba[y_test == 1], color='orange', label='Class 1', kde=True, stat="density", bins=25)
+plt.title("Prediction Probability Distribution")
+plt.xlabel("Predicted Probability")
+plt.ylabel("Density")
+plt.legend()
+plt.show()
+
+# Zapis do pliku
+predictions = pd.DataFrame({'Actual': y_test, 'Predicted (regression)': y_pred, 'Predicted (class)': y_pred_class})
+predictions.to_csv('svr_predictions_with_classes.csv', index=False)
+print("\nPredictions with classes saved to svr_predictions_with_classes.csv")
